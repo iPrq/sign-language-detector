@@ -1,0 +1,76 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Union
+import torch
+import torch.nn as nn
+import numpy as np
+import os
+
+app = FastAPI()
+
+# Enable CORS so your React frontend can talk to this backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, replace with your frontend URL
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- 1. MODEL ARCHITECTURE ---
+class SignLanguageANN(nn.Module):
+    def __init__(self, num_classes):
+        super(SignLanguageANN, self).__init__()
+        self.fc1 = nn.Linear(63, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, num_classes)
+        self.dropout = nn.Dropout(0.2)
+        
+    def forward(self, x):
+        x = torch.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = torch.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+# --- 2. LOAD ASSETS ---
+classes = np.load('classes.npy', allow_pickle=True)
+num_classes = len(classes)
+
+model = SignLanguageANN(num_classes)
+model.load_state_dict(torch.load('best_asl_model.pth', map_location='cpu'))
+model.eval()
+
+# --- 3. DATA SCHEMA ---
+class LandmarkInput(BaseModel):
+    landmarks: list[float] # Expecting a list of 63 floats
+
+# --- 4. PREDICTION ENDPOINT ---
+@app.post("/predict")
+async def predict_asl(data: Union[LandmarkInput, list[float]]):
+    # Accept either {"landmarks": [...]} or a raw [...] payload.
+    landmarks = data.landmarks if isinstance(data, LandmarkInput) else data
+
+    if len(landmarks) != 63:
+        raise HTTPException(status_code=400, detail="Expected 63 landmarks (21 points * 3 coords)")
+
+    # Convert list to tensor
+    input_tensor = torch.FloatTensor(landmarks).unsqueeze(0)
+    
+    with torch.no_grad():
+        outputs = model(input_tensor)
+        probabilities = torch.softmax(outputs, dim=1)
+        confidence, predicted_idx = torch.max(probabilities, 1)
+        
+        label = classes[predicted_idx.item()]
+        score = float(confidence.item())
+
+    return {
+        "letter": label,
+        "confidence": round(score, 4),
+        "status": "success"
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
