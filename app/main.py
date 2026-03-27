@@ -9,10 +9,10 @@ import os
 
 app = FastAPI()
 
-# Enable CORS so your React frontend can talk to this backend
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, replace with your frontend URL
+    allow_origins=["*"], 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -43,19 +43,27 @@ model.eval()
 
 # --- 3. DATA SCHEMA ---
 class LandmarkInput(BaseModel):
-    landmarks: list[float] # Expecting a list of 63 floats
+    landmarks: list[float] 
 
 # --- 4. PREDICTION ENDPOINT ---
 @app.post("/predict")
 async def predict_asl(data: Union[LandmarkInput, list[float]]):
-    # Accept either {"landmarks": [...]} or a raw [...] payload.
     landmarks = data.landmarks if isinstance(data, LandmarkInput) else data
 
     if len(landmarks) != 63:
         raise HTTPException(status_code=400, detail="Expected 63 landmarks (21 points * 3 coords)")
 
-    # Convert list to tensor
-    input_tensor = torch.FloatTensor(landmarks).unsqueeze(0)
+    wrist_x, wrist_y, wrist_z = landmarks[0], landmarks[1], landmarks[2]
+    normalized_landmarks = []
+    
+    for i in range(0, 63, 3):
+        normalized_landmarks.extend([
+            landmarks[i] - wrist_x,
+            landmarks[i+1] - wrist_y,
+            landmarks[i+2] - wrist_z
+        ])
+
+    input_tensor = torch.FloatTensor(normalized_landmarks).unsqueeze(0)
     
     with torch.no_grad():
         outputs = model(input_tensor)

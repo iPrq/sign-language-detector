@@ -35,3 +35,6 @@ sign-language-translator/node_modules/
 sign-language-translator/.next/
 sign-language-translator/out/
 sign-language-translator/.turbo/
+
+asl_landmarks_modern.csv
+asl_landmarks_normalized.csv

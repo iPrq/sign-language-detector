@@ -1,6 +1,6 @@
 "use client";
 
-import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { DrawingUtils, FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Webcam from "react-webcam";
 
@@ -19,6 +19,7 @@ const normalizePrediction = (value: string | undefined) =>
 
 export default function Home() {
   const webcamRef = useRef<Webcam | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<HandLandmarker | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef(0);
@@ -88,6 +89,67 @@ export default function Home() {
     [appendPrediction]
   );
 
+  const drawLandmarkOverlay = useCallback(
+    (
+      landmarks: any,
+      videoWidth: number,
+      videoHeight: number
+    ) => {
+      const canvas = overlayRef.current;
+      if (!canvas) {
+        return;
+      }
+
+      if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+        canvas.width = videoWidth;
+        canvas.height = videoHeight;
+      }
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!landmarks || landmarks.length === 0) {
+        return;
+      }
+
+      const drawingUtils = new DrawingUtils(ctx);
+      drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, {
+        color: "#22d3ee",
+        lineWidth: 3,
+      });
+      drawingUtils.drawLandmarks(landmarks, {
+        color: "#f97316",
+        radius: 4,
+      });
+
+      const wrist = landmarks[0];
+      if (wrist) {
+        ctx.fillStyle = "rgba(5, 13, 24, 0.78)";
+        ctx.fillRect(12, 12, 260, 72);
+        ctx.strokeStyle = "rgba(34, 211, 238, 0.7)";
+        ctx.strokeRect(12, 12, 260, 72);
+        ctx.fillStyle = "#e2e8f0";
+        ctx.font = "bold 14px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.fillText(`Wrist x: ${wrist.x.toFixed(3)}`, 20, 36);
+        ctx.fillText(`Wrist y: ${wrist.y.toFixed(3)}`, 20, 56);
+        ctx.fillText(`Wrist z: ${wrist.z.toFixed(3)}`, 20, 76);
+      }
+
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      landmarks.forEach((point: any, index: number) => {
+        const px = point.x * canvas.width + 8;
+        const py = point.y * canvas.height - 8;
+        ctx.fillText(`${index}: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`, px, py);
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     mountedRef.current = true;
 
@@ -152,6 +214,10 @@ export default function Home() {
       const result = detector.detectForVideo(video, performance.now());
       const hand = result.landmarks?.[0];
 
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        drawLandmarkOverlay(hand, video.videoWidth, video.videoHeight);
+      }
+
       if (!hand || hand.length !== 21) {
         handlePrediction(NOTHING);
         return;
@@ -204,41 +270,55 @@ export default function Home() {
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [handlePrediction]);
+  }, [drawLandmarkOverlay, handlePrediction]);
 
   const progress = Math.min((stabilityCount / STABILITY_TARGET) * 100, 100);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#070a0f] text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_14%,rgba(249,115,22,0.16),transparent_42%),radial-gradient(circle_at_85%_16%,rgba(20,184,166,0.22),transparent_36%),linear-gradient(160deg,#070a0f_0%,#0f1723_42%,#09111a_100%)]" />
+    <div className="relative min-h-screen overflow-hidden bg-[#0a0a0f] text-slate-50 font-sans">
+      {/* Dynamic Background Gradients (Optimized for GPU Performance) */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(79,70,229,0.15),transparent_40%),radial-gradient(circle_at_80%_20%,rgba(217,70,239,0.15),transparent_40%),radial-gradient(circle_at_40%_80%,rgba(8,145,178,0.12),transparent_50%),linear-gradient(160deg,#0a0a0f_0%,#0a0a0f_100%)]" />
 
-      <main className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 px-4 py-5 md:px-6">
-        <header className="rounded-3xl border border-white/15 bg-white/6 px-5 py-4 shadow-[0_14px_40px_-18px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-8 md:px-8">
+        {/* Header */}
+        <header className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 px-8 py-6 shadow-2xl shadow-black/50 backdrop-blur-lg lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 shadow-lg shadow-indigo-500/25">
+              <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.32em] text-teal-300">Realtime Sign Interpreter</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white md:text-4xl">
-                ASL Stream Console
+              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-300/80">Premium Translation Engine</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight text-white md:text-4xl bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                ASL Vision
               </h1>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full border border-white/15 bg-black/35 px-4 py-1.5 text-xs uppercase tracking-[0.16em] text-slate-200">
-                {isReady ? "Tracker Online" : "Booting Tracker"}
-              </span>
-              <span className="rounded-full border border-teal-200/35 bg-teal-300/12 px-4 py-1.5 text-xs uppercase tracking-[0.16em] text-teal-200">
-                30 FPS Target
-              </span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className={`flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm font-medium backdrop-blur-md ${isReady ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-300'}`}>
+              <span className={`h-2 w-2 rounded-full ${isReady ? 'animate-pulse bg-emerald-400' : 'bg-amber-400'}`} />
+              {isReady ? "System Active" : "Initializing..."}
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-300 backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-indigo-400" />
+              60 FPS Neural Link
             </div>
           </div>
         </header>
 
-        <section className="grid flex-1 gap-5 lg:grid-cols-[1.8fr_1fr]">
-          <div className="flex min-h-[430px] flex-col overflow-hidden rounded-3xl border border-white/15 bg-black/35 shadow-[0_20px_55px_-18px_rgba(0,0,0,0.8)]">
-            <div className="flex items-center justify-between border-b border-white/10 bg-black/25 px-4 py-3">
-              <p className="text-sm font-medium tracking-wide text-slate-200">Camera Feed</p>
-              <span className="rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-100">
-                Not Mirrored
-              </span>
+        {/* Main Interface Grid */}
+        <section className="grid flex-1 gap-6 lg:grid-cols-[1fr_360px]">
+          {/* Camera Feed */}
+          <div className="group relative flex min-h-[480px] flex-col overflow-hidden rounded-[2.5rem] border border-white/10 bg-black/40 shadow-2xl backdrop-blur-xl transition-all duration-500 hover:border-white/20 hover:shadow-indigo-500/10">
+            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-6">
+              <div className="flex items-center gap-3 rounded-2xl bg-black/40 px-4 py-2 backdrop-blur-md border border-white/5">
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-rose-500"></span>
+                </span>
+                <span className="text-sm font-medium tracking-wide text-slate-200">Live Feed</span>
+              </div>
             </div>
 
             <div className="relative flex-1 bg-black">
@@ -254,66 +334,118 @@ export default function Home() {
                   facingMode: "user",
                 }}
               />
-              <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/12 bg-[#0b1320]/85 p-3 backdrop-blur-lg">
-                <div className="mb-2 flex items-center justify-between text-sm">
-                  <span className="text-slate-300">Stability Progress</span>
-                  <span className="font-semibold text-teal-300">
-                    {Math.min(stabilityCount, STABILITY_TARGET)}/{STABILITY_TARGET}
+              <canvas
+                ref={overlayRef}
+                className="pointer-events-none absolute inset-0 h-full w-full object-cover z-20"
+                aria-label="MediaPipe hand landmarks overlay"
+              />
+              
+              {/* Floating Progress Bar */}
+              <div className="absolute inset-x-6 bottom-6 z-30 overflow-hidden rounded-2xl border border-white/10 bg-black/60 p-5 backdrop-blur-2xl shadow-xl transition-all duration-300">
+                <div className="mb-3 flex items-center justify-between text-sm font-medium">
+                  <span className="text-slate-300">Gesture Confidence</span>
+                  <span className="text-indigo-300">
+                    {Math.min(stabilityCount, STABILITY_TARGET)} / {STABILITY_TARGET} Frames
                   </span>
                 </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-700/70">
+                <div className="relative h-3 w-full overflow-hidden rounded-full bg-white/5">
+                  <div className="absolute inset-0 bg-white/5" />
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-orange-400 via-teal-300 to-emerald-300 transition-all duration-100"
+                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-fuchsia-500 to-pink-500 transition-all duration-200 ease-out shadow-[0_0_15px_rgba(217,70,239,0.5)]"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
               </div>
             </div>
+            {/* Glowing borders around camera feed using absolute inset */}
+            <div className="pointer-events-none absolute inset-0 rounded-[2.5rem] ring-1 ring-inset ring-white/10 transition-all duration-500 group-hover:ring-white/20" />
           </div>
 
-          <aside className="grid gap-4">
-            <section className="rounded-3xl border border-white/15 bg-white/7 p-4 backdrop-blur-xl">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-300">Current Prediction</p>
-              <p className="mt-3 text-5xl font-semibold leading-none text-teal-300">{candidate}</p>
-              <p className="mt-3 text-sm text-slate-300">A letter is committed after 15 consecutive frames.</p>
-            </section>
+          {/* Side Panel */}
+          <aside className="flex flex-col gap-6">
+            {/* Prediction Card */}
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-lg group">
+              <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-fuchsia-500/20 blur-3xl transition-transform duration-700 group-hover:scale-150" />
+              <div className="relative z-10">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Current Sign</p>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <p className="text-7xl font-bold text-white tracking-tighter drop-shadow-lg">{candidate}</p>
+                  {candidate !== "NOTHING" && <span className="animate-pulse text-2xl text-fuchsia-400">●</span>}
+                </div>
+                <p className="mt-6 text-sm leading-relaxed text-slate-400">
+                  Hold the gesture steady for <strong className="text-indigo-300">15 frames</strong> to commit it to the sentence.
+                </p>
+              </div>
+            </div>
 
-            <section className="rounded-3xl border border-white/15 bg-white/7 p-4 backdrop-blur-xl">
-              <p className="mb-3 text-xs uppercase tracking-[0.2em] text-slate-300">Controls</p>
-              <div className="grid grid-cols-2 gap-3">
+            {/* Controls Card */}
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-lg">
+              <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-slate-400">Controls</p>
+              <div className="grid gap-3">
                 <button
                   onClick={backspaceSentence}
-                  className="rounded-xl border border-white/15 bg-white/12 px-4 py-2.5 text-sm font-medium transition hover:bg-white/20"
+                  className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold transition-all hover:bg-white/10 hover:shadow-lg active:scale-95"
                 >
-                  Backspace
+                  <svg className="h-5 w-5 text-slate-300 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
+                  </svg>
+                  <span className="text-slate-200 group-hover:text-white transition-colors">Backspace</span>
                 </button>
                 <button
                   onClick={clearSentence}
-                  className="rounded-xl border border-orange-300/35 bg-orange-400/18 px-4 py-2.5 text-sm font-medium text-orange-50 transition hover:bg-orange-400/28"
+                  className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-2xl border border-rose-500/30 bg-rose-500/10 px-6 py-4 text-sm font-semibold text-rose-200 transition-all hover:bg-rose-500/20 hover:shadow-[0_0_20px_rgba(244,63,94,0.3)] active:scale-95"
                 >
-                  Clear
+                  <svg className="h-5 w-5 opacity-70 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  <span>Clear All</span>
                 </button>
               </div>
-            </section>
+            </div>
 
-            <section className="rounded-3xl border border-white/15 bg-white/7 p-4 backdrop-blur-xl">
+            {/* Status Card */}
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur-3xl mt-auto">
               {error ? (
-                <p className="rounded-xl border border-amber-300/35 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">
-                  {error}
-                </p>
+                <div className="flex gap-3 text-rose-300">
+                  <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-sm font-medium">{error}</p>
+                </div>
               ) : (
-                <p className="rounded-xl border border-teal-300/35 bg-teal-300/10 px-3 py-2 text-sm text-teal-100">
-                  Inference active. New API calls wait until the current request is complete.
-                </p>
+                <div className="flex gap-3 text-emerald-300">
+                  <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-sm font-medium">Neural engine connected. Awaiting gestures.</p>
+                </div>
               )}
-            </section>
+            </div>
           </aside>
         </section>
 
-        <section className="rounded-3xl border border-white/15 bg-black/30 p-4 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.8)] backdrop-blur-xl">
-          <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Sentence Strip</p>
-          <div className="mt-3 min-h-20 rounded-2xl border border-white/12 bg-[#0a1422]/80 px-4 py-3 text-2xl leading-relaxed tracking-[0.04em] text-white md:text-3xl">
-            {sentence || "..."}
+        {/* Sentence Output Strip */}
+        <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-3xl group">
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-fuchsia-500/5 to-cyan-500/5 opacity-0 transition-opacity duration-1000 group-hover:opacity-100" />
+          <div className="relative z-10">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+              </svg>
+              Translation Output
+            </p>
+            <div className="mt-5 min-h-[5rem] rounded-2xl border border-white/5 bg-black/40 p-5 shadow-inner backdrop-blur-sm">
+              <p className="text-3xl font-medium leading-relaxed tracking-wide text-white md:text-4xl drop-shadow-md">
+                {sentence ? (
+                  <>
+                    {sentence}
+                    <span className="ml-1 inline-block h-8 w-1 animate-pulse bg-indigo-400 align-middle"></span>
+                  </>
+                ) : (
+                  <span className="text-slate-500">Awaiting input...</span>
+                )}
+              </p>
+            </div>
           </div>
         </section>
       </main>
