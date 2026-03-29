@@ -25,7 +25,7 @@ class SignLanguageANN(nn.Module):
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, num_classes)
         self.dropout = nn.Dropout(0.2)
-        
+            
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = self.dropout(x)
